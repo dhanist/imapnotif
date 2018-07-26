@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+
+import configparser
+import argparse
+import imaplib
+import os, sys, logging, logging.handlers
+from gi.repository import Notify
+import email
+from html import escape as html_escape
+import time
+import resource, signal
+from pwd import getpwnam
+
+'''
+Please secure the config file with chmod 600 as this program runs
+non interactive so we need to read plaintext password
+'''
+CONFIG_FILE     = "%s/.notif.cfg" % (os.environ["HOME"])
+DEVLOG          = "/dev/log"
+DEVNULL         = "/dev/null"
+DEFAULT_MAILBOX = "INBOX"
+INTERVAL        = 10
+MAXFD           = 1024
+DEFAULT_UID     = 1000
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+handler = logging.handlers.SysLogHandler(address = DEVLOG)
+handler.setFormatter(logging.Formatter('%(module)s: %(message)s'))
+log.addHandler(handler)
+
+parser = argparse.ArgumentParser(description="IMAP Desktop Notification")
+parser.add_argument("-c", "--config", help="configuration file")
+parser.add_argument("-u", "--user", help="Run daemon as user")
+args = parser.parse_args()
+
+if args.user:
+        try:    uid = getpwnam(args.user).pw_uid
+        except: pass
+else:   uid = DEFAULT_UID
+
+M = None
+def close_imap(signum, blah):
+    log.info("Receiving signal number %d, exiting..." % (signum))
+    if isinstance(M, imaplib.IMAP4_SSL) \
+            or isinstance(M, imaplib.IMAP4):
+
+        M.logout()
+        M.close()
+
+    sys.exit(0)
+
+def build_config():
+    l = []
+
+    if args.config:
+            cfg_file = args.config
+    else:   cfg_file = CONFIG_FILE
+    cfg = configparser.ConfigParser()
+    try:
+        cfg.read(cfg_file)
+    except:
+        os.stderr.write("Unable to read config file, exiting..\n")
+        sys.exit(1)
+
+    for i in cfg.sections():
+        d = {}
+        d["name"] = i
+
+        opts = cfg.options(i)
+        for opt in opts:
+            try:
+                d[opt] = cfg.get(i, opt)
+            except:
+                d[opt] = None
+
+        if not "mailboxes" in d or d["mailboxes"] == "":
+            d["mailboxes"] = DEFAULT_MAILBOX
+
+        if "interval" in d:
+            try:
+                    d["interval"] = int(d["interval"])
+            except: d["interval"] = INTERVAL
+        else:
+            d["interval"] = INTERVAL
+
+        if not "server" in d or d["server"] == "":
+            sys.stderr.write("%s will not be checked: " % d["name"])
+            sys.stderr.write("server not defined in config file\n")
+            continue
+        if not "user" in d or d["user"] == "":
+            sys.stderr.write("%s will not be checked: " % d["name"])
+            sys.stderr.write("user not defined in config file\n")
+            continue
+        if not "password" in d or d["password"] == "":
+            sys.stderr.write("%s will not be checked: " % d["name"])
+            sys.stderr.write("password not defined in config file\n")
+            continue
+
+        l.append(d)
+
+    return l
+
+accounts = build_config()
+if len(accounts) == 0:
+    sys.stderr.write("No accounts defined, exiting..\n")
+    sys.exit(1)
+
+# daemonize
+try:
+    pid = os.fork()
+except Exception as e:
+    os.stderr.write("%s\n" % (e))
+    sys.exit(1)
+
+if pid == 0:
+    os.setsid()
+
+    try:
+        pid = os.fork()
+    except Exception as e:
+        os.stderr.write("%s\n" % (e))
+        sys.exit(1)
+
+    if pid == 0:
+        os.chdir("/")
+        os.umask(0)
+    else:
+        os._exit(0)
+
+else:
+    os._exit(0)
+
+if os.getuid() == 0:
+    os.setuid(uid)
+
+fd = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+if fd == resource.RLIM_INFINITY:
+    fd = MAXFD
+
+for i in range(0, fd):
+    try:
+            os.close(i)
+    except: pass
+
+try:
+    os.open(DEVNULL, os.O_RDONLY)   # stdin
+    os.open(DEVNULL, os.O_WRONLY)   # stdout
+    os.open(DEVNULL, os.O_WRONLY)   # stderr
+except:
+    log.warning("Cannot open %s" %(DEVNULL))
+    sys.exit(1)
+
+signal.signal(signal.SIGTERM, close_imap)
+
+# delay execution to align with time
+sec = time.localtime().tm_sec
+if sec > 0:
+    time.sleep(60 - sec)
+
+Notify.init(__name__)
+
+while 1:
+    for account in accounts:
+        if time.localtime().tm_min % account["interval"] > 0:
+            continue
+
+        if "ssl" in account and int(account["ssl"]) == 1:
+                M = imaplib.IMAP4_SSL(account["server"])
+        else:   M = imaplib.IMAP4(account["server"])
+
+        try:
+            M.login(account["user"], account["password"])
+        except Exception as e:
+            log.warning("%s: Unable to login to %s: $s" %
+                    (account["name"], account["server"]))
+            continue
+
+        mboxes = []
+        mboxes = account["mailboxes"].split(",")
+        if len(mboxes) < 1:
+            mboxes.append(DEFAULT_MAILBOX)
+
+        for mbox in mboxes:
+            M.select(mbox, readonly=1)
+            typ, data = M.search(None, 'UNSEEN')
+
+            notif = Notify.Notification.new("")
+            for i in data[0].split():
+                typ, data = M.fetch(i, '(BODY[HEADER.FIELDS (SUBJECT FROM)])')
+                msg = email.message_from_bytes(data[0][1])
+
+                notif.update("%s: %s" % (account["name"], mbox.strip("\"")),
+                        "%s\n\n%s" % (html_escape(msg["from"]),
+                            html_escape(msg["subject"])))
+                try:
+                    notif.show()
+                except Exception as e:
+                    log.warning(str(e))
+
+        M.close()
+        M.logout()
+
+    time.sleep(60 - time.localtime().tm_sec)
