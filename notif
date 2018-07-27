@@ -23,6 +23,28 @@ INTERVAL        = 10
 MAXFD           = 1024
 DEFAULT_UID     = 1000
 
+'''
+for storing and tracking checked email numbers
+collisions will occur every MAX_BYTE * 8 times.
+'''
+MAX_BYTE        = 128
+mnum            = bytearray(MAX_BYTE)
+
+def set_bit(num):
+    i = num % (MAX_BYTE * 8)
+    mnum[i >> 3] |= (1 << (i % 0x07))
+
+def ck_bit(num):
+    i = num % (MAX_BYTE * 8)
+    if mnum[i >> 3] & (1 << (i % 0x07)) > 0:
+        return True
+    return False
+
+def clr_bit(num):
+    i = num % (MAX_BYTE * 8)
+    mnum[i >> 3] &= ~(1 << (i % 0x07))
+
+
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 handler = logging.handlers.SysLogHandler(address = DEVLOG)
@@ -186,6 +208,9 @@ while 1:
             typ, data = M.search(None, 'UNSEEN')
 
             for i in data[0].split():
+                if ck_bit(int(i)):
+                    continue
+
                 typ, data = M.fetch(i, '(BODY[HEADER.FIELDS (SUBJECT FROM)])')
                 msg = email.message_from_bytes(data[0][1])
                 frm = html_escape(msg["from"].split('<')[0].replace("\"", "").strip())
@@ -196,7 +221,9 @@ while 1:
                 except Exception as e:
                     log.warning(str(e))
 
+                set_bit(int(i))
+            M.close()
+
         M.logout()
-        M.close()
 
     time.sleep(60 - time.localtime().tm_sec)
