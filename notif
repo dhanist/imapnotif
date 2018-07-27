@@ -185,20 +185,18 @@ while 1:
             M.select(mbox, readonly=1)
             typ, data = M.search(None, 'UNSEEN')
 
-            notif = Notify.Notification.new("")
             for i in data[0].split():
                 typ, data = M.fetch(i, '(BODY[HEADER.FIELDS (SUBJECT FROM)])')
                 msg = email.message_from_bytes(data[0][1])
+                frm = html_escape(msg["from"].split('<')[0].replace("\"", "").strip())
 
-                notif.update("%s: %s" % (account["name"], mbox.strip("\"")),
-                        "%s\n\n%s" % (html_escape(msg["from"]),
-                            html_escape(msg["subject"])))
                 try:
-                    notif.show()
+                    Notify.Notification.new("%s: %s" % (account["name"], mbox.strip("\"")),
+                        "%s\n\n%s" % (frm, html_escape(msg["subject"]))).show()
                 except Exception as e:
                     log.warning(str(e))
 
-        M.close()
         M.logout()
+        M.close()
 
     time.sleep(60 - time.localtime().tm_sec)
