@@ -349,7 +349,7 @@ if pid == 0:
         os.stderr.write("%s\n" % (e))
         sys.exit(1)
 
-    if pid > 0:
+    if pid == 0:
         os.chdir("/")
         os.umask(0)
     else:
