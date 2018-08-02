@@ -23,14 +23,13 @@ non interactive so we need to read plaintext password
 '''
 CONFIG_FILE     = "%s/.notif.cfg" % (os.environ["HOME"])
 DEVLOG          = "/dev/log"
-# DEVNULL         = "/dev/null"
-DEVNULL         = "/home/dhani/void/log"
+DEVNULL         = "/dev/null"
 DEFAULT_MAILBOX = "INBOX"
 INTERVAL        = 10
 IDLE_TIMEOUT    = 15        # when using imap idle, value in minute
 DEFAULT_UID     = 1000
-VERBOSE         = True
-DEBUG           = True
+VERBOSE         = False
+DEBUG           = False
 ACCOUNT_REF     = []        # holding account isntances
 
 '''
@@ -219,7 +218,16 @@ class Mbox:
                 self.state &= ~self.IDLE_FAILED
                 return
 
-            socks = select.select([self._imap.sock], [], [], IDLE_TIMEOUT * 60)
+            timer = 0
+            while timer < IDLE_TIMEOUT * 60:
+                socks = select.select([self._imap.sock], [], [], 1)
+                if len(socks[0]) > 0:
+                    break
+                if self.state & self.SOCK_ERR > 0:
+                    self.state |= self.IDLE_FAILED
+                    return
+                timer += 1
+
             while self.state & self.LOCKED > 0:
                 time.sleep(1)
                 if DEBUG:
@@ -371,7 +379,11 @@ class Mbox:
                 self._send_done()
 
             self._imap.sock.sendall(b'%s STORE %s +FLAGS \\Seen\r\n' % (tag, index))
-        except: pass
+            self._read_response('any', 10)
+        except Exception as e:
+            if DEBUG:
+                log.warning("{}".format(e))
+
 
         self.state &= ~self.LOCKED
 
@@ -418,6 +430,7 @@ def close_imap(signum, blah=None):
         log.info("Sockets not responding, force closing..")
 
     time.sleep(5)
+    sys.exit(0)
 
 
 def build_config():
@@ -519,8 +532,6 @@ if len(accounts) == 0:
 
 signal.signal(signal.SIGTERM, close_imap)
 signal.signal(signal.SIGINT, close_imap)
-GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, close_imap, signal.SIGINT)
-GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, close_imap, signal.SIGTERM)
 
 daemonize()
 
@@ -531,4 +542,6 @@ for account in accounts:
     T.loop()
     ACCOUNT_REF.append(T)
 
+GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, close_imap, signal.SIGINT)
+GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, close_imap, signal.SIGTERM)
 GLib.MainLoop().run()
