@@ -304,9 +304,15 @@ if __name__ == '__main__':
         a.password = account["password"]
         a.name     = account["name"]
 
+        if 'ssl' in account and int(account['ssl']) == 1:
+            a.ssl  = True
+
         i = INTERVAL
         if 'interval' in account:
             i = account['interval']
+
+        if not 'mailboxes' in account:
+            account['mailboxes'] = DEFAULT_MAILBOX
 
         for m in account["mailboxes"].split(","):
             mbox = mailbox.Mailbox(a, name=m)
