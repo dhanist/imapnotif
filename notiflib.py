@@ -4,13 +4,12 @@ import imaplib, email
 import select
 import socket
 import time
-import sys, traceback
 from io import StringIO
 
 DEFAULT_IDLE_TIMEOUT = 10 # idle timeout in minutes
 DEFAULT_FOLDER       = 'INBOX'
 
-class Mailbox:
+class IMAP_Mailbox:
     """
     Mailbox class
 
@@ -155,22 +154,17 @@ class Mailbox:
 
 
         if self.status & self.IDLE == 0:
-            print("idle entering queue")
             self._wlock_fifo()
             try:
                 if not self._send_idle():
-                    print("idle exiting queue, send idle false")
                     self.status |= self.IDLE_FAILED
                     self._wlock_fifo(1)
                     return None
             except:
-                print("idle failed exc")
-                print("idle exiting queue, send idle exc")
                 self.status |= self.IDLE_FAILED
                 self._wlock_fifo(1)
                 return None
 
-            print("idle exiting queue")
             self._wlock_fifo(1)
 
         if timeout is None or timeout == 0:
@@ -196,18 +190,15 @@ class Mailbox:
 
             return data
 
-        print("idle timeout entering queue")
         self._wlock_fifo()
         try:
             if self._send_done():
                 self.status &= ~self.IDLE
             else:
                 self.status |= self.IDLE_FAILED
-            print("idle timeout exiting queue")
             self._wlock_fifo(1)
             return None
         except:
-            print("idle timeout exiting queue")
             self._wlock_fifo(1)
             raise
 
@@ -221,18 +212,7 @@ class Mailbox:
         tag = kwargs.get('tag', '*').lower()
         timeout = kwargs.get('timeout', 10)
 
-        time.sleep(0.3)
-        self._read_lock <<= 1
-        self._read_lock |= 0X02
-
-        read_id = self._read_lock
-        while read_id > 2:
-            while self._read_lock & 0x01 == 0:
-                time.sleep(0.1)
-                continue
-            read_id >>= 1
-
-        self._read_lock &= ~0x01
+        self._rlock_fifo()
 
         match = None
         if tag in self._resp:
@@ -251,49 +231,50 @@ class Mailbox:
                 del self._resp[tag]
 
         if match is not None:
-            self._read_lock >>= 1
+            self._rlock_fifo(1)
             return match
 
+
+        buf = StringIO()
         timer = 0
         while timer < timeout:
             sock = select.select([self._imap.sock], [], [], 1)
             if len(sock[0]) == 0:
-                timer += 1
-                continue
-
-            try:
-                buf = StringIO()
-                while 1:
-                    resp = self._imap.sock.recv(4096)
-                    buf.write(resp.decode('utf-8'))
-                    if len(resp) < 4096:
-                        break
-
                 for ln in buf.getvalue().splitlines():
                     if len(ln) == 0:
-                        self._read_lock >>= 1
-                        raise BufferError("Connection terminated by remote host")
+                        continue
 
                     data = ln.lower()
-                    print("{} data: {}".format(self.name, data))
                     resp_tag = data.split()[0]
                     if tag == resp_tag:
                         if what is None:
-                            self._read_lock >>= 1
+                            self._rlock_fifo(1)
+                            buf.close()
                             return data
                         if data.find(what.lower()) != -1:
-                            self._read_lock >>= 1
+                            self._rlock_fifo(1)
+                            buf.close()
                             return data
 
                     if not resp_tag in self._resp:
                         self._resp[resp_tag] = []
                     self._resp[resp_tag].append(data)
-                buf.close()
-            except:
-                #debug
-                traceback.print_exc()
 
-        self._read_lock >>= 1
+                timer += 1
+                continue
+
+            try:
+                resp = self._imap.sock.recv(4096)
+                written = buf.write(resp.decode('utf-8'))
+                if written == 0:
+                    raise BufferError("socket closed")
+
+            except:
+                buf.close()
+                raise
+
+        self._rlock_fifo(1)
+        buf.close()
         raise TimeoutError("socket timeout")
 
     def _send_idle(self):
@@ -311,7 +292,6 @@ class Mailbox:
             self._read_response('idling', tag='+')
             self.status |= self.IDLE
             self._idle_tag = tag
-            print("idle tag == {}".format(tag))
             return True
         except TimeoutError:
             self.status |= self.CLOSED
@@ -367,13 +347,39 @@ class Mailbox:
         self._wlock |= 0x02
 
         w_id = self._wlock
-        while w_id > 0x02:
+        while w_id > 0x03:
+            timer = 0
             while self._wlock & 0x01 == 0:
+                if timer >= 300:
+                    self._wlock >>= 1
                 time.sleep(0.1)
+                timer += 1
                 continue
             w_id >>= 1
 
         self._wlock &= ~0x01
+
+    def _rlock_fifo(self, unlock=0):
+        if unlock == 1:
+            self._read_lock >>= 1
+            return
+
+        time.sleep(0.3)
+        self._read_lock <<= 1
+        self._read_lock |= 0X02
+
+        read_id = self._read_lock
+        while read_id > 0x03:
+            timer = 0
+            while self._read_lock & 0x01 == 0:
+                if timer >= 300:
+                    self._wlock >>= 1
+                time.sleep(0.1)
+                timer += 1
+                continue
+            read_id >>= 1
+
+        self._read_lock &= ~0x01
 
     def mark_read(self, num):
         """
@@ -386,28 +392,23 @@ class Mailbox:
             bool: True if successful or False if failed
         """
 
-        print("mark read entering queue")
         self._wlock_fifo()
         tag = self._imap._new_tag().decode('utf-8')
         data = bytes("{} STORE {} +FLAGS \\Seen\r\n".format(tag, num), 'utf-8')
         try:
             if self.status & self.IDLE > 0:
                 if not self._send_done():
-                    print("mark read exiting queue, done failed")
                     self._wlock_fifo(1)
                     return False
 
             self._imap.sock.sendall(data)
-            print("mark read exiting queue, store suceed")
             self._wlock_fifo(1)
             return True
         except TimeoutError:
             self.status |= self.CLOSED
-            print("mark read exiting queue, store timeout")
             self._wlock_fifo(1)
             return False
         except:
-            print("mark read exiting queue, store exc")
             self._wlock_fifo(1)
             self.status |= self.CLOSED
             raise
@@ -435,7 +436,6 @@ class Mailbox:
                 self._imap.logout()
             else:
                 self._imap.sock.shutdown(socket.SHUT_RDWR)
-                self._imap.file.close()
         except: pass
         self._wlock_fifo(1)
 

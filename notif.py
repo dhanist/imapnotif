@@ -10,7 +10,7 @@ from html import escape as html_escape
 import resource, signal
 from pwd import getpwnam
 from threading import Thread
-import mailbox
+import notiflib
 import email
 import time
 
@@ -25,7 +25,7 @@ DEFAULT_MAILBOX = "INBOX"
 INTERVAL        = 10
 IDLE_TIMEOUT    = 15        # when using imap idle, value in minute
 DEFAULT_UID     = 1000
-VERBOSE         = False
+VERBOSE         = True
 MAILBOXES       = []        # holding account isntances
 SYS_EXIT        = False
 
@@ -63,7 +63,7 @@ def close_imap(signum, blah=None):
             log.info("{} - {}: closing thread.".format(
                 m._account.name,
                 m.name))
-        if m.status & mailbox.Mailbox.CLOSED > 0:
+        if m.status & notiflib.IMAP_Mailbox.CLOSED > 0:
             continue
         try:
             Thread(target=m.close).start()
@@ -168,7 +168,7 @@ def show_notif(num, mbox):
     if not isinstance(num, str):
         return
 
-    msg = mbox.fetch(num, mailbox.Mailbox.FETCH_HEADER)
+    msg = mbox.fetch(num, notiflib.IMAP_Mailbox.FETCH_HEADER)
     if not isinstance(msg, email.message.Message):
         return
 
@@ -230,7 +230,7 @@ def loop(mbox, interval=INTERVAL):
                 mbox._account.name,
                 mbox.name))
 
-        if mbox.status & mailbox.Mailbox.CLOSED > 0:
+        if mbox.status & notiflib.IMAP_Mailbox.CLOSED > 0:
             try:
                 if not mbox.open():
                     time.sleep(60 - time.localtime().tm_sec)
@@ -298,7 +298,7 @@ if __name__ == '__main__':
     Notify.init("imapnotif")
 
     for account in accounts:
-        a = mailbox.Account()
+        a = notiflib.Account()
         a.server   = account["server"]
         a.username = account["username"]
         a.password = account["password"]
@@ -315,7 +315,7 @@ if __name__ == '__main__':
             account['mailboxes'] = DEFAULT_MAILBOX
 
         for m in account["mailboxes"].split(","):
-            mbox = mailbox.Mailbox(a, name=m)
+            mbox = notiflib.IMAP_Mailbox(a, name=m)
             MAILBOXES.append(mbox)
 
             try:
