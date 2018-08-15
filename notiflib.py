@@ -246,19 +246,22 @@ class IMAP_Mailbox:
 
                     data = ln.lower()
                     resp_tag = data.split()[0]
-                    if tag == resp_tag:
+                    if tag == resp_tag and match is None:
                         if what is None:
-                            self._rlock_fifo(1)
-                            buf.close()
-                            return data
+                            match = data
+                            continue
                         if data.find(what.lower()) != -1:
-                            self._rlock_fifo(1)
-                            buf.close()
-                            return data
+                            match = data
+                            continue
 
                     if not resp_tag in self._resp:
                         self._resp[resp_tag] = []
                     self._resp[resp_tag].append(data)
+
+                if match is not None:
+                    buf.close()
+                    self._rlock_fifo(1)
+                    return match
 
                 timer += 1
                 continue
