@@ -29,6 +29,28 @@ VERBOSE         = True
 MAILBOXES       = []        # holding account isntances
 SYS_EXIT        = False
 
+
+track           = {}
+MAX_BYTE        = 128
+class Track:
+    def __init__(self):
+        self._mnum = bytearray(MAX_BYTE)
+
+    def set_bit(self, num):
+        i = num % (MAX_BYTE * 8)
+        self._mnum[i >> 3] |= (1 << (i % 0x07))
+
+    def ck_bit(self, num):
+        i = num % (MAX_BYTE * 8)
+        if self._mnum[i >> 3] & (1 << (i % 0x07)) > 0:
+            return True
+        return False
+
+    def clr_bit(self, num):
+        i = num % (MAX_BYTE * 8)
+        self._mnum[i >> 3] &= ~(1 << (i % 0x07))
+
+
 class Notif:
     def __init__(self, **kwargs):
         self._data = kwargs.get("data")
@@ -186,6 +208,8 @@ def show_notif(num, mbox):
         callback = mbox.mark_read
     ).show()
 
+    track[mbox._account.name].set_bit(int(num))
+
 def idle(mbox):
     while mbox.status & mbox.IDLE_FAILED == 0:
         try:
@@ -208,17 +232,31 @@ def idle(mbox):
 
             num = data.split()[1]
             show_notif(num, mbox)
+            poll(mbox)
 
     if VERBOSE:
         log.info("{} - {}: idle failed".format(
             mbox._account.name,
             mbox.name))
 
-def poll(mbox, interval):
-    nums = mbox.poll()
-    if nums is not None:
+def poll(mbox):
+    while 1:
+        nums = mbox.poll()
+        if nums is None:
+            return
+
+        skips = 0
+        i = 0
         for num in nums:
-            show_notif(num.decode('utf-8'), mbox)
+            i += 1
+            n = num.decode('utf-8')
+            if track[mbox._account.name].ck_bit(int(n)):
+                skips += 1
+                continue
+            show_notif(n, mbox)
+            time.sleep(1)
+        if skips == i:
+            return
 
 def loop(mbox, interval=INTERVAL):
     while 1:
@@ -250,7 +288,7 @@ def loop(mbox, interval=INTERVAL):
                 log.info("{} - {}: polling server..".format(
                     mbox._account.name,
                     mbox.name))
-            poll(mbox, interval)
+            poll(mbox)
 
         if 'IDLE' in mbox._imap.capabilities:
             if VERBOSE:
@@ -304,6 +342,8 @@ if __name__ == '__main__':
         a.password = account["password"]
         a.name     = account["name"]
 
+        track[a.name] = Track()
+
         if 'ssl' in account and int(account['ssl']) == 1:
             a.ssl  = True
 
@@ -320,7 +360,7 @@ if __name__ == '__main__':
 
             try:
                 if mbox.open():
-                    poll(mbox, i)
+                    poll(mbox)
             except: pass
 
     for M in MAILBOXES:

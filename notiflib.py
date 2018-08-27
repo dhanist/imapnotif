@@ -127,13 +127,21 @@ class IMAP_Mailbox:
         Returns:
             returns list [] containing message numbers or None if error
         """
+        self._wlock_fifo()
+        if self.status & self.IDLE > 0:
+            if not self._send_done():
+                self._wlock_fifo(1)
+                raise ValueError('Mailbox is idle, cannot fetch')
         try:
             t, data = self._imap.search(None, 'UNSEEN')
             if not t == 'OK':
+                self._wlock_fifo(1)
                 return None
 
+            self._wlock_fifo(1)
             return data[0].split()
         except:
+            self._wlock_fifo(1)
             raise
 
     def idle(self, timeout=None):
