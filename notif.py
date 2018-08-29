@@ -2,7 +2,8 @@
 
 import gi
 gi.require_version('Notify', '0.7')
-from gi.repository import Notify, GLib
+gi.require_version('Gtk', '3.0')
+from gi.repository import Notify, GLib, Gtk
 import configparser
 import argparse
 import os, sys, logging, logging.handlers
@@ -10,9 +11,11 @@ from html import escape as html_escape
 import resource, signal
 from pwd import getpwnam
 from threading import Thread
-import notiflib
+import notiflib, view
 import email
 import time
+
+import traceback
 
 '''
 Please secure the config file with chmod 600 as this program runs
@@ -28,7 +31,6 @@ DEFAULT_UID     = 1000
 VERBOSE         = True
 MAILBOXES       = []        # holding account isntances
 SYS_EXIT        = False
-
 
 track           = {}
 MAX_BYTE        = 128
@@ -53,22 +55,28 @@ class Track:
 
 class Notif:
     def __init__(self, **kwargs):
-        self._data = kwargs.get("data")
         self._summ = kwargs.get('summary')
         self._body = kwargs.get('body')
         self._icon = kwargs.get('icon')
-        self._func = kwargs.get('callback')
+        self._func = {}
 
         self._notif = Notify.Notification.new(self._summ, self._body)
-        self._notif.add_action("click", "Mark read", self._callback, self._data)
 
     def _callback(self, notif, act, data):
+        func = self._func.get(act)
+        print("action {} function {}".format(act, func))
+        if func is None:
+            return
         try:
-            self._func(data)
-        except: pass
+            func(data)
+        except: traceback.print_exc()
 
     def show(self):
         self._notif.show()
+
+    def add_callback(self, label, func, data = None):
+        self._func[label] = func
+        self._notif.add_action(label, label, self._callback, data)
 
 def close_imap(signum, blah=None):
     if VERBOSE:
@@ -204,11 +212,43 @@ def show_notif(num, mbox):
     notif = Notif(
         body     = notif_body,
         summary  = notif_summ,
-        data     = num,
-        callback = mbox.mark_read
-    ).show()
+    )
+    notif.add_callback("View", view_msg, (mbox, num))
+    notif.add_callback("Mark read", mbox.mark_read, num)
+    notif.show()
 
     track[mbox._account.name].set_bit(int(num))
+
+gtk_windows = 0
+def view_msg(args):
+    global gtk_windows
+    for i in args:
+        print(i)
+    if len(args) != 2:
+        print(len(args))
+        return
+
+    mbox = args[0]
+    num = args[1]
+    msg = mbox.fetch(num)
+    if msg is None:
+        print("msg is none")
+        return
+    win = view.ViewMsg(msg)
+    win.connect('destroy', close_msg)
+    win.show_all()
+    if gtk_windows == 0:
+        Gtk.main()
+
+    gtk_windows <<= 1
+    gtk_windows |=  1
+
+def close_msg(win):
+    global gtk_windows
+    Gtk.Widget.destroy(win)
+    gtk_windows >>= 1
+    if gtk_windows == 0:
+        Gtk.main_quit()
 
 def idle(mbox):
     while mbox.status & mbox.IDLE_FAILED == 0:
@@ -253,7 +293,10 @@ def poll(mbox):
             if track[mbox._account.name].ck_bit(int(n)):
                 skips += 1
                 continue
-            show_notif(n, mbox)
+            try:
+                show_notif(n, mbox)
+            except:
+                traceback.print_exc()
             time.sleep(1)
         if skips == i:
             return
@@ -332,7 +375,7 @@ if __name__ == '__main__':
         sys.stderr.write("No accounts defined, exiting..\n")
         sys.exit(1)
 
-    daemonize()
+    #daemonize()
     Notify.init("imapnotif")
 
     for account in accounts:

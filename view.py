@@ -24,7 +24,7 @@ class ViewMsg(Gtk.Window):
         subject     = builder.get_object('subject')
         _from       = builder.get_object('from')
         to          = builder.get_object('to')
-        self.cc     = builder.get_object('cc')
+        self.cc     = None
         date        = builder.get_object('date')
         text        = builder.get_object('payload')
 
@@ -34,7 +34,9 @@ class ViewMsg(Gtk.Window):
         _from.set_text(msg["from"].replace('\r\n', ' '))
         to.set_text(msg["to"].replace('\r\n', ' '))
         date.set_text(msg["date"])
-        self.cc.set_text(msg["cc"].replace('\r\n', ' '))
+        if msg["cc"] is not None:
+            self.cc     = builder.get_object('cc')
+            self.cc.set_text(msg["cc"].replace('\r\n', ' '))
         buf = Gtk.TextBuffer()
 
         if msg.is_multipart():
