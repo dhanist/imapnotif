@@ -7,11 +7,10 @@ from notiflib import IMAP_Mailbox
 from threading import Thread
 from bs4 import BeautifulSoup as BS4
 
-import traceback
-
 class ViewMsg(Gtk.Window):
     def __init__(self, account, inbox, num):
         Gtk.Window.__init__(self)
+        self.set_title("View Message")
         self.set_default_size(800, 300)
 
         self.builder = Gtk.Builder()
@@ -38,11 +37,6 @@ class ViewMsg(Gtk.Window):
 
         Thread(target=self.load).start()
 
-    def set_account(self, acc):
-        self.account = acc
-    def set_num(self, num):
-        self.num = num
-
     def load(self):
         msg = None
         if self._account is None or self._num is None:
@@ -54,8 +48,8 @@ class ViewMsg(Gtk.Window):
             if not mbox.open():
                 return
             msg = mbox.fetch(self._num)
+            mbox.close()
             if msg is None:
-                print("Msg is None")
                 return
 
             self.subject.set_text(msg["subject"].replace('\r\n', ' '))
@@ -72,7 +66,6 @@ class ViewMsg(Gtk.Window):
                     if s.get_content_subtype() == 'plain':
                         txt = s.get_payload(decode=True).decode('utf-8', errors='ignore')
                         break
-
             else:
                 if msg.get_content_subtype() == 'html':
                     txt = "".join(BS4(
@@ -83,10 +76,8 @@ class ViewMsg(Gtk.Window):
 
             buf.set_text(txt)
         except:
-            traceback.print_exc()
             buf.set_text("Error")
         self.text.set_buffer(buf)
-
 
     def show_all(self):
         Gtk.Window.show_all(self)

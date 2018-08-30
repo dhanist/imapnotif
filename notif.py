@@ -15,8 +15,6 @@ import notiflib, view
 import email
 import time
 
-import traceback
-
 '''
 Please secure the config file with chmod 600 as this program runs
 non interactive so we need to read plaintext password
@@ -68,7 +66,7 @@ class Notif:
             return
         try:
             func(data)
-        except: traceback.print_exc()
+        except: pass
 
     def show(self):
         self._notif.show()
@@ -229,10 +227,6 @@ def view_msg(data):
     win.connect('destroy', Gtk.main_quit)
     win.show_all()
 
-    if not mbox.open():
-        print("open mbox failed")
-        return
-
     Gtk.main()
 
 def idle(mbox):
@@ -281,7 +275,7 @@ def poll(mbox):
             try:
                 show_notif(n, mbox)
             except:
-                traceback.print_exc()
+                pass
             time.sleep(1)
         if skips == i:
             return
@@ -360,7 +354,7 @@ if __name__ == '__main__':
         sys.stderr.write("No accounts defined, exiting..\n")
         sys.exit(1)
 
-    #daemonize()
+    daemonize()
     Notify.init("imapnotif")
 
     for account in accounts:
