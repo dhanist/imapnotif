@@ -64,7 +64,6 @@ class Notif:
 
     def _callback(self, notif, act, data):
         func = self._func.get(act)
-        print("action {} function {}".format(act, func))
         if func is None:
             return
         try:
@@ -213,42 +212,28 @@ def show_notif(num, mbox):
         body     = notif_body,
         summary  = notif_summ,
     )
-    notif.add_callback("View", view_msg, (mbox, num))
+    notif.add_callback("View", view_msg,
+            {"account":mbox._account, "num":num, "inbox": mbox.name})
     notif.add_callback("Mark read", mbox.mark_read, num)
     notif.show()
 
     track[mbox._account.name].set_bit(int(num))
 
-gtk_windows = 0
-def view_msg(args):
-    global gtk_windows
-    for i in args:
-        print(i)
-    if len(args) != 2:
-        print(len(args))
+def view_msg(data):
+    account = data.get("account")
+    num     = data.get("num")
+    inbox   = data.get("inbox")
+    if account is None or num is None:
         return
-
-    mbox = args[0]
-    num = args[1]
-    msg = mbox.fetch(num)
-    if msg is None:
-        print("msg is none")
-        return
-    win = view.ViewMsg(msg)
-    win.connect('destroy', close_msg)
+    win = view.ViewMsg(account, inbox, num)
+    win.connect('destroy', Gtk.main_quit)
     win.show_all()
-    if gtk_windows == 0:
-        Gtk.main()
 
-    gtk_windows <<= 1
-    gtk_windows |=  1
+    if not mbox.open():
+        print("open mbox failed")
+        return
 
-def close_msg(win):
-    global gtk_windows
-    Gtk.Widget.destroy(win)
-    gtk_windows >>= 1
-    if gtk_windows == 0:
-        Gtk.main_quit()
+    Gtk.main()
 
 def idle(mbox):
     while mbox.status & mbox.IDLE_FAILED == 0:
