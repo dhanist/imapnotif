@@ -8,7 +8,6 @@
     <property name="margin_left">5</property>
     <property name="margin_right">5</property>
     <property name="margin_top">10</property>
-    <property name="margin_bottom">5</property>
     <property name="orientation">vertical</property>
     <property name="spacing">5</property>
     <child>
@@ -283,7 +282,6 @@
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="margin_top">1</property>
-            <property name="margin_bottom">1</property>
             <property name="hexpand">True</property>
             <property name="vexpand">True</property>
             <property name="pixels_above_lines">5</property>
@@ -299,6 +297,20 @@
         <property name="expand">False</property>
         <property name="fill">True</property>
         <property name="position">9</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkStatusbar" id="statusbar">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="margin_start">10</property>
+        <property name="margin_end">10</property>
+        <property name="hexpand">True</property>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">10</property>
       </packing>
     </child>
   </object>

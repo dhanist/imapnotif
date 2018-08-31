@@ -6,6 +6,9 @@ from gi.repository import Gtk, GLib
 from notiflib import IMAP_Mailbox
 from threading import Thread
 from bs4 import BeautifulSoup as BS4
+import os, ui
+
+import traceback
 
 class ViewMsg(Gtk.Window):
     def __init__(self, account, inbox, num):
@@ -13,23 +16,24 @@ class ViewMsg(Gtk.Window):
         self.set_title("View Message")
         self.set_default_size(800, 300)
 
+        cwd = os.path.dirname(ui.__file__)
         self.builder = Gtk.Builder()
-        self.builder.add_from_file('ui/view.glade')
+        self.builder.add_from_file(os.path.join(cwd, "view.glade"))
 
-        box          = self.builder.get_object('box')
-        self.box_cc  = self.builder.get_object('box_cc')
-        self.subject = self.builder.get_object('subject')
-        self._from   = self.builder.get_object('from')
-        self.to      = self.builder.get_object('to')
-        self.cc      = self.builder.get_object('cc')
-        self.sep_cc  = self.builder.get_object('sep_cc')
-        self.date    = self.builder.get_object('date')
-        self.text    = self.builder.get_object('payload')
+        box            = self.builder.get_object('box')
+        self.box_cc    = self.builder.get_object('box_cc')
+        self.subject   = self.builder.get_object('subject')
+        self._from     = self.builder.get_object('from')
+        self.to        = self.builder.get_object('to')
+        self.cc        = self.builder.get_object('cc')
+        self.sep_cc    = self.builder.get_object('sep_cc')
+        self.date      = self.builder.get_object('date')
+        self.text      = self.builder.get_object('payload')
+        self.statusbar = self.builder.get_object('statusbar')
 
         self.add(box)
         self.buf = Gtk.TextBuffer()
-        self.buf.set_text("Loading...")
-        self.text.set_buffer(self.buf)
+        self.statusbar.push(0, "loading...")
 
         self._account = account
         self._num     = num
@@ -44,12 +48,16 @@ class ViewMsg(Gtk.Window):
 
         buf = Gtk.TextBuffer()
         try:
+            self.statusbar.push(0, "connecting to {}...".format(self._account.server))
             mbox = IMAP_Mailbox(self._account, name=self._inbox)
+            self.statusbar.push(0, "opening folder {}...".format(mbox.name))
             if not mbox.open():
+                self.statusbar.push(0, "failed")
                 return
+            self.statusbar.push(0, "fetching message...")
             msg = mbox.fetch(self._num)
-            mbox.close()
             if msg is None:
+                self.statusbar.push(0, "fetching message failed")
                 return
 
             self.subject.set_text(msg["subject"].replace('\r\n', ' '))
@@ -76,8 +84,12 @@ class ViewMsg(Gtk.Window):
 
             buf.set_text(txt)
         except:
+            traceback.print_exc()
             buf.set_text("Error")
         self.text.set_buffer(buf)
+        self.statusbar.push(0, "disconnect from {}...".format(self._account.server))
+        mbox.close()
+        self.statusbar.push(0, "done")
 
     def show_all(self):
         Gtk.Window.show_all(self)

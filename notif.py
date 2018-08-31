@@ -15,13 +15,16 @@ import notiflib, view
 import email
 import time
 
+import traceback
+
 '''
 Please secure the config file with chmod 600 as this program runs
 non interactive so we need to read plaintext password
 '''
 CONFIG_FILE     = "%s/.notif.cfg" % (os.environ["HOME"])
 DEVLOG          = "/dev/log"
-DEVNULL         = "/dev/null"
+# DEVNULL         = "/dev/null"
+DEVNULL         = os.path.join(os.environ["HOME"], "src", "notif", "log")
 DEFAULT_MAILBOX = "INBOX"
 INTERVAL        = 10
 IDLE_TIMEOUT    = 15        # when using imap idle, value in minute
@@ -218,16 +221,19 @@ def show_notif(num, mbox):
     track[mbox._account.name].set_bit(int(num))
 
 def view_msg(data):
-    account = data.get("account")
-    num     = data.get("num")
-    inbox   = data.get("inbox")
-    if account is None or num is None:
-        return
-    win = view.ViewMsg(account, inbox, num)
-    win.connect('destroy', Gtk.main_quit)
-    win.show_all()
+    try:
+        account = data.get("account")
+        num     = data.get("num")
+        inbox   = data.get("inbox")
+        if account is None or num is None:
+            return
+        win = view.ViewMsg(account, inbox, num)
+        win.connect('destroy', Gtk.main_quit)
+        win.show_all()
 
-    Gtk.main()
+        Gtk.main()
+    except:
+        traceback.print_exc()
 
 def idle(mbox):
     while mbox.status & mbox.IDLE_FAILED == 0:
