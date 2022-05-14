@@ -56,9 +56,9 @@ class IMAP_Mailbox:
 
         try:
             if self._account.ssl:
-                self._imap = imaplib.IMAP4_SSL(self._account.server)
+                self._imap = imaplib.IMAP4_SSL(self._account.server, port=self._account.port)
             else:
-                self._imap = imaplib.IMAP4(self._account.server)
+                self._imap = imaplib.IMAP4(self._account.server, self._account.port)
         except:
             self.status |= self.E_NETWORK
             raise

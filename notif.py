@@ -14,6 +14,7 @@ from threading import Thread
 import notiflib, view
 import email
 import time
+import subprocess
 
 import traceback
 
@@ -23,8 +24,7 @@ non interactive so we need to read plaintext password
 '''
 CONFIG_FILE     = "%s/.notif.cfg" % (os.environ["HOME"])
 DEVLOG          = "/dev/log"
-# DEVNULL         = "/dev/null"
-DEVNULL         = os.path.join(os.environ["HOME"], "src", "notif", "log")
+DEVNULL         = "/dev/null"
 DEFAULT_MAILBOX = "INBOX"
 INTERVAL        = 10
 IDLE_TIMEOUT    = 15        # when using imap idle, value in minute
@@ -148,6 +148,10 @@ def build_config():
             sys.stderr.write("%s will not be checked: " % d["name"])
             sys.stderr.write("password not defined in config file\n")
             continue
+
+        if d['password'].startswith('`') and d['password'].endswith('`'):
+            passwd = getpass(d['password'])
+            d['password'] = passwd
 
         l.append(d)
 
@@ -335,6 +339,18 @@ def loop(mbox, interval=INTERVAL):
             mbox._account.name,
             mbox.name))
 
+def getpass(passwd):
+    if not passwd.startswith('`'):
+        return passwd
+    if not passwd.endswith('`'):
+        return passwd
+    passeval = passwd.split('`')[1]
+    p = subprocess.Popen(passeval.split(), stdout=subprocess.PIPE)
+    if p.returncode == 1:
+        return ""
+    o,e = p.communicate()
+    return o.decode('utf-8')
+
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 handler = logging.handlers.SysLogHandler(address = DEVLOG)
@@ -366,6 +382,7 @@ if __name__ == '__main__':
     for account in accounts:
         a = notiflib.Account()
         a.server   = account["server"]
+        a.port     = 143
         a.username = account["username"]
         a.password = account["password"]
         a.name     = account["name"]
@@ -374,10 +391,14 @@ if __name__ == '__main__':
 
         if 'ssl' in account and int(account['ssl']) == 1:
             a.ssl  = True
+            a.port = 993
 
         i = INTERVAL
         if 'interval' in account:
             i = account['interval']
+
+        if 'port' in account:
+            a.port = account['port']
 
         if not 'mailboxes' in account:
             account['mailboxes'] = DEFAULT_MAILBOX
