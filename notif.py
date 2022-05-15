@@ -291,6 +291,8 @@ def poll(mbox):
             return
 
 def loop(mbox, interval=INTERVAL):
+    global SYS_EXIT
+
     while 1:
         if SYS_EXIT:
             break
@@ -306,6 +308,9 @@ def loop(mbox, interval=INTERVAL):
                     time.sleep(60 - time.localtime().tm_sec)
                     continue
             except:
+                if mbox.status & notiflib.IMAP_Mailbox.E_LOGIN > 0:
+                    log.error('{} login error, exiting..'.format(mbox._account.name))
+                    SYS_EXIT = True
                 if VERBOSE:
                     log.info("{} - {}: network error, waiting..".format(
                         mbox._account.name,
@@ -405,12 +410,19 @@ if __name__ == '__main__':
 
         for m in account["mailboxes"].split(","):
             mbox = notiflib.IMAP_Mailbox(a, name=m)
-            MAILBOXES.append(mbox)
 
             try:
                 if mbox.open():
                     poll(mbox)
-            except: pass
+            except:
+                if mbox.status & notiflib.IMAP_Mailbox.E_LOGIN > 0:
+                    log.error('{} - poll login error, account excluded!'.format(mbox._account.name))
+                    continue
+            MAILBOXES.append(mbox)
+
+    if len(MAILBOXES) == 0:
+        log.info("Exit! No mailbox to monitor")
+        sys.exit(0)
 
     for M in MAILBOXES:
         Thread(target=loop, args=(M,)).start()
