@@ -365,6 +365,7 @@ log.addHandler(handler)
 parser = argparse.ArgumentParser(description="IMAP Desktop Notification")
 parser.add_argument("-c", "--config", help="configuration file")
 parser.add_argument("-u", "--user", help="Run daemon as user")
+parser.add_argument("-f", "--foreground", action='store_true', help="Run in foreground")
 args = parser.parse_args()
 
 if args.user:
@@ -381,7 +382,9 @@ if __name__ == '__main__':
         sys.stderr.write("No accounts defined, exiting..\n")
         sys.exit(1)
 
-    daemonize()
+    if not args.foreground:
+        daemonize()
+
     Notify.init("imapnotif")
 
     for account in accounts:
