@@ -13,6 +13,7 @@ from pwd import getpwnam
 from threading import Thread
 import notiflib, view
 import email
+from email.header import make_header, decode_header
 import time
 import subprocess
 
@@ -209,10 +210,12 @@ def show_notif(num, mbox):
     email_from = msg["from"].split('<')[0].replace("\"", "")
     notif_body = html_escape("{}\n\n{}".format(
         email_from,
-        msg["subject"].replace("\"", "")))
+        make_header(decode_header(msg.get('subject'))))
+    )
     notif_summ = html_escape("{}: {}".format(
         mbox._account.name,
-        mbox.name.replace("\"", "")))
+        mbox.name.replace("\"", ""))
+    )
     notif = Notif(
         body     = notif_body,
         summary  = notif_summ,

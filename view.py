@@ -7,6 +7,7 @@ from notiflib import IMAP_Mailbox
 from threading import Thread
 from bs4 import BeautifulSoup as BS4
 import os, ui
+from email.header import make_header, decode_header
 
 import traceback
 
@@ -60,7 +61,9 @@ class ViewMsg(Gtk.Window):
                 self.statusbar.push(0, "fetching message failed")
                 return
 
-            self.subject.set_text(msg["subject"].replace('\r\n', ' '))
+            self.subject.set_text(
+                str(make_header(decode_header(msg.get('subject'))))
+            )
             self._from.set_text(msg["from"].replace('\r\n', ' '))
             self.to.set_text(msg["to"].replace('\r\n', ' '))
             self.date.set_text(msg["date"])
@@ -68,21 +71,7 @@ class ViewMsg(Gtk.Window):
                 self.cc.set_text(msg["cc"].replace('\r\n', ' '))
                 self.box_cc.show()
                 self.sep_cc.show()
-
-            if msg.is_multipart():
-                for s in msg.walk():
-                    if s.get_content_subtype() == 'plain':
-                        txt = s.get_payload(decode=True).decode('utf-8', errors='ignore')
-                        break
-            else:
-                if msg.get_content_subtype() == 'html':
-                    txt = "".join(BS4(
-                        msg.get_payload(decode=True).decode('utf-8', errors='ignore'),
-                        "html.parser").stripped_strings)
-                else:
-                    txt = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
-
-            buf.set_text(txt)
+            buf.set_text(self.get_content(msg))
         except:
             traceback.print_exc()
             buf.set_text("Error")
@@ -90,6 +79,32 @@ class ViewMsg(Gtk.Window):
         self.statusbar.push(0, "disconnect from {}...".format(self._account.server))
         mbox.close()
         self.statusbar.push(0, "done")
+
+    def get_content(self, msg):
+        txt = ""
+        if msg.is_multipart():
+            for s in msg.walk():
+                pl = s.get_payload(decode = True)
+                if not pl: continue
+                raw = pl.decode('utf-8', errors = 'ignore')
+                if s.get_content_subtype() == 'plain':
+                    txt = raw
+                    break
+                if s.get_content_subtype() == 'html':
+                    txt = "\n".join(BS4(raw, "html.parser").stripped_strings)
+                    continue
+                txt = raw
+            return txt
+
+        pl = msg.get_payload(decode = True)
+        if not pl: return ""
+
+        raw = pl.decode('utf-8', errors = 'ignore')
+        if msg.get_content_subtype() == 'plain':
+            return raw
+        if msg.get_content_subtype() == 'html':
+            return "\n".join(BS4(raw, "html.parser").stripped_strings)
+        return raw
 
     def show_all(self):
         Gtk.Window.show_all(self)
