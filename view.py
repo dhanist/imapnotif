@@ -64,8 +64,14 @@ class ViewMsg(Gtk.Window):
             self.subject.set_text(
                 str(make_header(decode_header(msg.get('subject'))))
             )
-            self._from.set_text(msg["from"].replace('\r\n', ' '))
-            self.to.set_text(msg["to"].replace('\r\n', ' '))
+            self._from.set_text(
+                str(make_header(decode_header(
+                    msg["from"].replace('\r\n', ' '))))
+            )
+            self.to.set_text(
+                str(make_header(decode_header(
+                    msg["to"].replace('\r\n', ' '))))
+            )
             self.date.set_text(msg["date"])
             if msg["cc"] is not None:
                 self.cc.set_text(msg["cc"].replace('\r\n', ' '))
