@@ -207,7 +207,9 @@ def show_notif(num, mbox):
     if not isinstance(msg, email.message.Message):
         return
 
-    email_from = msg["from"].split('<')[0].replace("\"", "")
+    email_from = make_header(
+            decode_header(msg["from"].split('<')[0].replace("\"", ""))
+    )
     notif_body = html_escape("{}\n\n{}".format(
         email_from,
         make_header(decode_header(msg.get('subject'))))
